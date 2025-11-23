@@ -1,0 +1,81 @@
+ibrary(shiny)
+library(ggplot2)
+library(dplyr)
+ui <- fluidPage(
+ titlePanel("📊 Pocket Money Expense Predictor"),
+
+ sidebarLayout(
+ sidebarPanel(
+ fileInput("file", "Upload CSV File", accept = ".csv"),
+ tags$hr(),
+ numericInput("income", "New Income:", value = 1500),
+ numericInput("age", "New Age:", value = 16),
+ numericInput("savings", "New Savings:", value = 200),
+ actionButton("predict", "Predict Expenses"),
+ tags$hr(),
+ h4("Predicted Expense:"),
+ textOutput("prediction")
+ ),
+
+ mainPanel(
+ tabsetPanel(
+ tabPanel("Scatter Plot", plotOutput("scatterPlot")),
+ tabPanel("Model Summary", verbatimTextOutput("modelSummary")),
+ tabPanel("Evaluation", verbatimTextOutput("metrics"))
+ )
+
+)
+ )
+)
+server <- function(input, output) {
+
+ data <- reactive({
+ req(input$file)
+ df <- read.csv(input$file$datapath)
+ validate(
+ need(all(c("Income", "Age", "Savings", "Expenses") %in% names(df)),
+ "CSV must contain: Income, Age, Savings, Expenses")
+ )
+ return(df)
+ })
+
+ model <- reactive({
+ req(data())
+ lm(Expenses ~ Income + Age + Savings, data = data())
+ })
+
+ output$scatterPlot <- renderPlot({
+ req(data())
+ ggplot(data(), aes(x = Income, y = Expenses)) +
+ geom_point(color = "blue", size = 3) +
+ geom_smooth(method = "lm", se = FALSE, color = "red") +
+ ggtitle("Income vs Monthly Expenses") +
+ theme_minimal()
+ })
+output$modelSummary <- renderPrint({
+ req(model())
+ summary(model())
+ })
+
+ output$metrics <- renderPrint({
+ req(model())
+ preds <- predict(model(), data())
+ rmse <- sqrt(mean((preds - data()$Expenses)^2))
+ r2 <- summary(model())$r.squared
+ cat("RMSE:", round(rmse, 2), "\n")
+ cat("R-squared:", round(r2, 2), "\n")
+ })
+ observeEvent(input$predict, {
+ req(model())
+ new_user <- data.frame(
+ Income = input$income,
+ Age = input$age,
+ Savings = input$savings
+ )
+ pred <- predict(model(), new_user)
+ output$prediction <- renderText({
+ paste("₹", round(pred, 2))
+ })
+ })
+}
+shinyApp(ui = ui, server = server)
